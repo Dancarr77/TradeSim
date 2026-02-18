@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Trading</title>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+
+<style>
+body{
+  margin:0;
+  background:#050608;
+  color:white;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto;
+  height:100vh;
+  display:flex;
+}
+
+.left{
+  width:360px;
+  border-right:1px solid #1c1c1c;
+  padding:18px;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  overflow:auto;
+}
+
+.positions{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.position{
+  border:1px solid #1f1f1f;
+  background:linear-gradient(180deg,#0c0d10,#08090b);
+  border-radius:14px;
+  padding:12px;
+}
+.position-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.ticker{
+  font-weight:600;
+  letter-spacing:.2px;
+}
+.pnl.green{color:#7cffb2}
+.pnl.red{color:#ff7c7c}
+.meta{
+  font-size:12px;
+  color:#9a9a9a;
+  margin-top:6px;
+}
+.actions{
+  margin-top:10px;
+  display:flex;
+  gap:8px;
+}
+.btn{
+  background:#101115;
+  border:1px solid #2a2a2a;
+  color:white;
+  padding:6px 10px;
+  border-radius:10px;
+  cursor:pointer;
+  font-size:12px;
+}
+.btn:hover{background:#16171c}
+
+.divider{
+  height:1px;
+  background:#1e1e1e;
+}
+
+.order{
+  border:1px solid #1f1f1f;
+  background:linear-gradient(180deg,#0c0d10,#08090b);
+  border-radius:18px;
+  padding:16px;
+}
+.order h3{
+  margin:0 0 12px;
+  font-size:14px;
+  font-weight:600;
+  letter-spacing:.3px;
+}
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:14px;
+}
+.label{
+  font-size:11px;
+  color:#9a9a9a;
+}
+.input, .select{
+  background:#0b0c10;
+  border:1px solid #2a2a2a;
+  color:white;
+  padding:12px;
+  border-radius:12px;
+  font-size:14px;
+  outline:none;
+}
+.primary{
+  width:100%;
+  padding:14px;
+  border-radius:999px;
+  font-weight:600;
+  letter-spacing:.3px;
+  background:linear-gradient(135deg,#1f2937,#0f172a);
+  border:1px solid #334155;
+}
+.primary:hover{opacity:.9}
+
+.main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+.top{
+  padding:12px 16px;
+  border-bottom:1px solid #1c1c1c;
+  font-weight:600;
+}
+.chart{
+  flex:1;
+}
+</style>
+</head>
+
+<body>
+
+<div class="left">
+
+  <form method="post" action="/logout">
+    <button class="btn" style="width:100%">Logout</button>
+  </form>
+
+  <div class="divider"></div>
+
+  <div>
+    <h3 style="margin:0 0 10px;font-size:14px">Positions</h3>
+    <div id="positions" class="positions"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="order">
+    <h3>Open Position</h3>
+
+    <div class="field">
+      <div class="label">Symbol</div>
+      <select id="symbolSelect" class="select">
+        <option value="BTCUSD">BTC / USD</option>
+        <option value="ETHUSD">ETH / USD</option>
+        <option value="SOLUSD">SOL / USD</option>
+        <option value="AAPL">AAPL</option>
+        <option value="TSLA">TSLA</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <div class="label">Amount (USD)</div>
+      <input id="amt" class="input" placeholder="500">
+    </div>
+
+    <button class="btn primary" onclick="openTrade()">Open Trade</button>
+  </div>
+
+</div>
+
+<div class="main">
+  <div class="top" id="title">BTCUSD · 1D</div>
+  <div class="chart" id="tv_chart"></div>
+</div>
+
+<script>
+let currentSymbol = "BTCUSD";
+let widget = null;
+
+function loadTradingView(symbol){
+  currentSymbol = symbol;
+  document.getElementById("title").textContent = symbol + " · 1D";
+  if(widget) widget.remove();
+  widget = new TradingView.widget({
+    container_id: "tv_chart",
+    autosize: true,
+    symbol: symbol,
+    interval: "D",
+    theme: "dark",
+    locale: "en",
+    hide_top_toolbar: false,
+    hide_side_toolbar: false,
+    allow_symbol_change: false
+  });
+}
+
+async function api(url, opts){
+  const r = await fetch(url, opts);
+  if(!r.ok) throw new Error();
+  return await r.json();
+}
+
+async function loadPositions(){
+  const d = await api("/api/trades");
+  const box = document.getElementById("positions");
+  box.innerHTML = "";
+
+  if(d.items.length === 0){
+    box.innerHTML = "<div style='color:#777;font-size:12px'>No open positions</div>";
+    return;
+  }
+
+  d.items.forEach(t=>{
+    const el = document.createElement("div");
+    el.className = "position";
+    el.innerHTML = `
+      <div class="position-top">
+        <span class="ticker">${t.ticker}</span>
+        <span class="pnl ${t.pnl >= 0 ? "green" : "red"}">
+          ${t.pnl >= 0 ? "+" : ""}${t.pnl.toFixed(2)}
+        </span>
+      </div>
+      <div class="meta">Invested: $${t.invested.toFixed(2)}</div>
+      <div class="actions">
+        <button class="btn" onclick="loadTradingView('${t.ticker}')">Chart</button>
+        <button class="btn" onclick="closeTrade(${t.id})">Close</button>
+      </div>
+    `;
+    box.appendChild(el);
+  });
+}
+
+async function openTrade(){
+  const amt = document.getElementById("amt").value;
+  if(!amt) return;
+
+  await api("/api/trades/open", {
+    method: "POST",
+    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+    body: new URLSearchParams({
+      ticker: currentSymbol,
+      amount: amt
+    })
+  });
+
+  document.getElementById("amt").value = "";
+  loadPositions();
+}
+
+async function closeTrade(id){
+  await api("/api/trades/close", {
+    method: "POST",
+    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+    body: new URLSearchParams({ trade_id: id })
+  });
+  loadPositions();
+}
+
+document.getElementById("symbolSelect").addEventListener("change", e=>{
+  loadTradingView(e.target.value);
+});
+
+(async () => {
+  loadTradingView(currentSymbol);
+  loadPositions();
+})();
+</script>
+
+</body>
+</html>
